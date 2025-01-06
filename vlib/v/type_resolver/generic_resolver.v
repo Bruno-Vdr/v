@@ -17,10 +17,10 @@ pub fn (mut ct TypeResolver) unwrap_generic_expr(expr ast.Expr, default_typ ast.
 			return expr.typ
 		}
 		ast.InfixExpr {
-			if ct.info.is_comptime(expr.left) {
+			if expr.left_ct_expr {
 				return ct.resolver.unwrap_generic(ct.get_type(expr.left))
 			}
-			if ct.info.is_comptime(expr.right) {
+			if expr.right_ct_expr {
 				return ct.resolver.unwrap_generic(ct.get_type(expr.right))
 			}
 			return default_typ
@@ -86,38 +86,32 @@ pub fn (t &TypeResolver) is_generic_expr(node ast.Expr) bool {
 
 // get_generic_array_fixed_element_type retrieves the plain element type from a nested fixed array [N][N]T -> T
 pub fn (t &TypeResolver) get_generic_array_fixed_element_type(array ast.ArrayFixed) ast.Type {
-	mut cparam_elem_info := array as ast.ArrayFixed
-	mut cparam_elem_sym := t.table.sym(cparam_elem_info.elem_type)
-	mut typ := ast.void_type
+	mut cparam_elem_info := array
+	mut cparam_elem_sym := t.table.sym(array.elem_type)
 	for {
-		if cparam_elem_sym.kind == .array_fixed {
-			cparam_elem_info = cparam_elem_sym.info as ast.ArrayFixed
+		if mut cparam_elem_sym.info is ast.ArrayFixed {
+			cparam_elem_info = cparam_elem_sym.info
 			cparam_elem_sym = t.table.sym(cparam_elem_info.elem_type)
 		} else {
 			return cparam_elem_info.elem_type.set_nr_muls(0)
 		}
 	}
-	return typ
+	return ast.void_type
 }
 
 // get_generic_array_element_type retrieves the plain element type from a nested array [][]T -> T
 pub fn (t &TypeResolver) get_generic_array_element_type(array ast.Array) ast.Type {
-	mut cparam_elem_info := array as ast.Array
-	mut cparam_elem_sym := t.table.sym(cparam_elem_info.elem_type)
-	mut typ := ast.void_type
+	mut cparam_elem_info := array
+	mut cparam_elem_sym := t.table.sym(array.elem_type)
 	for {
-		if cparam_elem_sym.kind == .array {
-			cparam_elem_info = cparam_elem_sym.info as ast.Array
+		if mut cparam_elem_sym.info is ast.Array {
+			cparam_elem_info = cparam_elem_sym.info
 			cparam_elem_sym = t.table.sym(cparam_elem_info.elem_type)
 		} else {
-			typ = cparam_elem_info.elem_type
-			if cparam_elem_info.elem_type.nr_muls() > 0 && typ.nr_muls() > 0 {
-				typ = typ.set_nr_muls(0)
-			}
-			break
+			return cparam_elem_info.elem_type.set_nr_muls(0)
 		}
 	}
-	return typ
+	return ast.void_type
 }
 
 // resolve_args resolves the ast node types dynamically depending on its special meaning
@@ -303,7 +297,7 @@ pub fn (mut t TypeResolver) resolve_args(cur_fn &ast.FnDecl, func &ast.Fn, mut n
 					comptime_args[k] = m.return_type
 				}
 			}
-		} else if mut call_arg.expr is ast.CastExpr {
+		} else if mut call_arg.expr is ast.CastExpr && call_arg.expr.typ.has_flag(.generic) {
 			cparam_type_sym := t.table.sym(t.resolver.unwrap_generic(call_arg.expr.typ))
 			param_typ_sym := t.table.sym(param_typ)
 			if param_typ_sym.kind == .map && cparam_type_sym.info is ast.Map {

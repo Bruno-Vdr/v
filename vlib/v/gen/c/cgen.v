@@ -906,6 +906,10 @@ pub fn (mut g Gen) init() {
 #endif
 ')
 		}
+		if g.pref.os == .linux {
+			// For gettid() declaration (and other GNU-specific bits).
+			g.cheaders.writeln('#define _GNU_SOURCE')
+		}
 		if g.pref.os == .wasm32 {
 			g.cheaders.writeln('#define VWASM 1')
 			// Include <stdint.h> instead of <inttypes.h> for WASM target
@@ -6094,9 +6098,13 @@ fn (mut g Gen) write_init_function() {
 	defer {
 		util.timing_measure(@METHOD)
 	}
-	if g.pref.is_liveshared {
+
+	// Force generate _vinit_caller, _vcleanup_caller , these are needed under Windows,
+	// because dl.open() / dl.close() will call them when loading/unloading shared dll.
+	if g.pref.is_liveshared && g.pref.os != .windows {
 		return
 	}
+
 	fn_vinit_start_pos := g.out.len
 
 	// ___argv is declared as voidptr here, because that unifies the windows/unix logic
